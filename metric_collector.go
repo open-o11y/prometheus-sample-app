@@ -2,12 +2,13 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 )
 
-type MetricCollector struct {
+type metricCollector struct {
 	counters   []prometheus.Counter
 	gauges     []prometheus.Gauge
 	histograms []prometheus.Histogram
@@ -17,68 +18,74 @@ type MetricCollector struct {
 	timestamp   float64
 }
 
-func (mc MetricCollector) convertMetricsToExportedMetrics() []MetricResponse {
-	metricsResponse := make([]MetricResponse, metricCollector.metricCount)
-
-	mc.handleCounters(metricsResponse)
-	mc.handleGauges(metricsResponse)
-	mc.handleHistograms(metricsResponse)
-	mc.handleSummarys(metricsResponse)
-
-	return metricsResponse
+func newMetricCollector() metricCollector {
+	return metricCollector{}
 }
 
-func (mc MetricCollector) handleCounters(metricsResponse []MetricResponse) {
-	for _, counter := range metricCollector.counters {
-		var metric *dto.Metric
+func (mc metricCollector) convertMetricsToExportedMetrics() *[]MetricResponse {
+	metricsResponse := []MetricResponse{}
+
+	mc.handleCounters(&metricsResponse)
+	mc.handleGauges(&metricsResponse)
+	mc.handleHistograms(&metricsResponse)
+	mc.handleSummarys(&metricsResponse)
+
+	return &metricsResponse
+}
+
+func (mc metricCollector) handleCounters(metricsResponse *[]MetricResponse) {
+	for _, counter := range mc.counters {
+		metric := &dto.Metric{}
 		counter.Write(metric)
-
+		fmt.Println(metric.GetLabel())
 		labels := convertLabelPairsToLabels(metric.GetLabel())
-		values := convertMetricValues(metricCollector.timestamp, metric.GetCounter().GetValue())
+		labels["__name__"] = getName(counter)
+		values := convertMetricValues(mc.timestamp, metric.GetCounter().GetValue())
 
-		metricsResponse = append(metricsResponse, MetricResponse{
+		*metricsResponse = append(*metricsResponse, MetricResponse{
 			Labels: labels,
 			Value:  values,
 		})
 	}
 }
 
-func (mc MetricCollector) handleGauges(metricsResponse []MetricResponse) {
-	for _, gauge := range metricCollector.gauges {
-		var metric *dto.Metric
+func (mc metricCollector) handleGauges(metricsResponse *[]MetricResponse) {
+	for _, gauge := range mc.gauges {
+		metric := &dto.Metric{}
 		gauge.Write(metric)
 
 		labels := convertLabelPairsToLabels(metric.GetLabel())
-		values := convertMetricValues(metricCollector.timestamp, metric.GetGauge().GetValue())
+		labels["__name__"] = getName(gauge)
+		values := convertMetricValues(mc.timestamp, metric.GetGauge().GetValue())
 
-		metricsResponse = append(metricsResponse, MetricResponse{
+		*metricsResponse = append(*metricsResponse, MetricResponse{
 			Labels: labels,
 			Value:  values,
 		})
 	}
 }
 
-func (mc MetricCollector) handleHistograms(metricsResponse []MetricResponse) {
-	for _, histogram := range metricCollector.histograms {
-		var metric *dto.Metric
+func (mc metricCollector) handleHistograms(metricsResponse *[]MetricResponse) {
+	for _, histogram := range mc.histograms {
+		metric := &dto.Metric{}
 		histogram.Write(metric)
 
 		// handle count
 		countLabels := convertLabelPairsToLabels(metric.GetLabel())
-		countLabels["__name__"] += "_count"
-		countValues := convertMetricValues(metricCollector.timestamp, float64(metric.GetHistogram().GetSampleCount()))
+		countLabels["__name__"] = getName(histogram) + "_count"
+		countValues := convertMetricValues(mc.timestamp, float64(metric.GetHistogram().GetSampleCount()))
 
-		metricsResponse = append(metricsResponse, MetricResponse{
+		*metricsResponse = append(*metricsResponse, MetricResponse{
 			Labels: countLabels,
 			Value:  countValues,
 		})
 
 		// handle sum
 		sumLabels := convertLabelPairsToLabels(metric.GetLabel())
-		sumLabels["__name__"] += "_sum"
-		sumValues := convertMetricValues(metricCollector.timestamp, metric.GetHistogram().GetSampleSum())
+		sumLabels["__name__"] = getName(histogram) + "_sum"
+		sumValues := convertMetricValues(mc.timestamp, metric.GetHistogram().GetSampleSum())
 
-		metricsResponse = append(metricsResponse, MetricResponse{
+		*metricsResponse = append(*metricsResponse, MetricResponse{
 			Labels: sumLabels,
 			Value:  sumValues,
 		})
@@ -86,11 +93,11 @@ func (mc MetricCollector) handleHistograms(metricsResponse []MetricResponse) {
 		// handle buckets
 		for _, bucket := range metric.GetHistogram().GetBucket() {
 			labels := convertLabelPairsToLabels(metric.GetLabel())
-			labels["__name__"] += "_bucket"
+			labels["__name__"] = getName(histogram) + "_bucket"
 			labels["le"] = fmt.Sprintf("%f", bucket.GetUpperBound())
-			values := convertMetricValues(metricCollector.timestamp, float64(bucket.GetCumulativeCount()))
+			values := convertMetricValues(mc.timestamp, float64(bucket.GetCumulativeCount()))
 
-			metricsResponse = append(metricsResponse, MetricResponse{
+			*metricsResponse = append(*metricsResponse, MetricResponse{
 				Labels: labels,
 				Value:  values,
 			})
@@ -98,27 +105,27 @@ func (mc MetricCollector) handleHistograms(metricsResponse []MetricResponse) {
 	}
 }
 
-func (mc MetricCollector) handleSummarys(metricsResponse []MetricResponse) {
-	for _, summary := range metricCollector.summarys {
-		var metric *dto.Metric
+func (mc metricCollector) handleSummarys(metricsResponse *[]MetricResponse) {
+	for _, summary := range mc.summarys {
+		metric := &dto.Metric{}
 		summary.Write(metric)
 
 		// handle count
 		countLabels := convertLabelPairsToLabels(metric.GetLabel())
-		countLabels["__name__"] += "_count"
-		countValues := convertMetricValues(metricCollector.timestamp, float64(metric.GetSummary().GetSampleCount()))
+		countLabels["__name__"] = getName(summary) + "_count"
+		countValues := convertMetricValues(mc.timestamp, float64(metric.GetSummary().GetSampleCount()))
 
-		metricsResponse = append(metricsResponse, MetricResponse{
+		*metricsResponse = append(*metricsResponse, MetricResponse{
 			Labels: countLabels,
 			Value:  countValues,
 		})
 
 		// handle sum
 		sumLabels := convertLabelPairsToLabels(metric.GetLabel())
-		sumLabels["__name__"] += "_sum"
-		sumValues := convertMetricValues(metricCollector.timestamp, metric.GetSummary().GetSampleSum())
+		sumLabels["__name__"] = getName(summary) + "_sum"
+		sumValues := convertMetricValues(mc.timestamp, metric.GetSummary().GetSampleSum())
 
-		metricsResponse = append(metricsResponse, MetricResponse{
+		*metricsResponse = append(*metricsResponse, MetricResponse{
 			Labels: sumLabels,
 			Value:  sumValues,
 		})
@@ -126,10 +133,10 @@ func (mc MetricCollector) handleSummarys(metricsResponse []MetricResponse) {
 		// handle quantiles
 		for _, quantile := range metric.GetSummary().GetQuantile() {
 			labels := convertLabelPairsToLabels(metric.GetLabel())
+			labels["__name__"] = getName(summary)
 			labels["quantile"] = fmt.Sprintf("%f", quantile.GetQuantile())
-			values := convertMetricValues(metricCollector.timestamp, float64(quantile.GetValue()))
-
-			metricsResponse = append(metricsResponse, MetricResponse{
+			values := convertMetricValues(mc.timestamp, float64(quantile.GetValue()))
+			*metricsResponse = append(*metricsResponse, MetricResponse{
 				Labels: labels,
 				Value:  values,
 			})
@@ -138,7 +145,7 @@ func (mc MetricCollector) handleSummarys(metricsResponse []MetricResponse) {
 }
 
 func convertLabelPairsToLabels(labelPairs []*dto.LabelPair) map[string]string {
-	var labels map[string]string
+	labels := map[string]string{}
 	for _, labelPair := range labelPairs {
 		labels[labelPair.GetName()] = labelPair.GetValue()
 	}
@@ -150,4 +157,13 @@ func convertMetricValues(timestamp float64, value float64) []string {
 	values[0] = fmt.Sprintf("%f", timestamp)
 	values[1] = fmt.Sprintf("%f", value)
 	return values
+}
+
+type metricType interface {
+	Desc() *prometheus.Desc
+}
+
+func getName(metric metricType) string {
+	// The only way I could find to get name from a metric was this, which is not pretty
+	return strings.Split(metric.Desc().String(), `"`)[1]
 }

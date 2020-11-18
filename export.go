@@ -10,10 +10,10 @@ type MetricResponse struct {
 	Value  []string          `json:"value"`
 }
 
-func retrieveExpectedMetricsHelper(w http.ResponseWriter, r *http.Request, metrics []MetricResponse) {
+func retrieveExpectedMetricsHelper(w http.ResponseWriter, r *http.Request, metrics *[]MetricResponse) {
 	switch r.Method {
 	case "GET":
-		response, _ := json.Marshal(metrics)
+		response, _ := json.Marshal(*metrics)
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(response)
 	}

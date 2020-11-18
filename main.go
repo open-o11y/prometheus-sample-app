@@ -15,11 +15,11 @@ import (
 )
 
 var (
-	mtx             sync.Mutex
-	testingID       string
-	metricCount     = 1
-	metricCollector MetricCollector
-	promRegistry    = prometheus.NewRegistry() // local Registry so we don't get Go metrics, etc.
+	mtx          sync.Mutex
+	testingID    string
+	metricCount  = 1
+	mc           = newMetricCollector()
+	promRegistry = prometheus.NewRegistry() // local Registry so we don't get Go metrics, etc.
 )
 
 type metricBatch struct {
@@ -32,8 +32,8 @@ type metricBatch struct {
 func main() {
 	rand.Seed(time.Now().Unix())
 
-	metrics := registerMetrics(metricCount)
-	go updateMetrics(metrics)
+	registerMetrics(metricCount)
+	go updateMetrics()
 
 	http.HandleFunc("/", healthCheckHandler)
 	http.Handle("/metrics", promhttp.HandlerFor(promRegistry, promhttp.HandlerOpts{}))
@@ -42,17 +42,19 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
-func updateMetrics(metrics []*metricBatch) {
+func updateMetrics() {
 	for {
-		for idx := range metrics {
-			metrics[idx].counter.Add(rand.Float64())
-			metrics[idx].gauge.Add(rand.Float64())
+		for idx := 0; idx < mc.metricCount; idx++ {
+			mtx.Lock()
+			mc.counters[idx].Add(rand.Float64())
+			mc.gauges[idx].Add(rand.Float64())
 			lowerBound := math.Mod(rand.Float64(), 1)
 			increment := math.Mod(rand.Float64(), 0.05)
 			for i := lowerBound; i < 1; i += increment {
-				metrics[idx].histogram.Observe(i)
-				metrics[idx].summary.Observe(i)
+				mc.histograms[idx].Observe(i)
+				mc.summarys[idx].Observe(i)
 			}
+			mtx.Unlock()
 		}
 
 		time.Sleep(time.Second)
@@ -63,18 +65,22 @@ func retrieveExpectedMetrics(w http.ResponseWriter, r *http.Request) {
 	mtx.Lock()
 	defer mtx.Unlock()
 
-	metricsResponse := metricCollector.convertMetricsToExportedMetrics()
+	metricsResponse := mc.convertMetricsToExportedMetrics()
 	retrieveExpectedMetricsHelper(w, r, metricsResponse)
 }
 
-func registerMetrics(metricCount int) []*metricBatch {
-	metrics := make([]*metricBatch, metricCount)
+func registerMetrics(metricCount int) {
+	mc.metricCount = metricCount
 	for idx := 0; idx < metricCount; idx++ {
 		counter := prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Namespace: testingID,
 				Name:      fmt.Sprintf("test_counter_%v", idx),
 				Help:      "This is my counter",
+				// labels can be added like this
+				// ConstLabels: prometheus.Labels{
+				// 	"label1": "val1",
+				// },
 			})
 		gauge := prometheus.NewGauge(
 			prometheus.GaugeOpts{
@@ -114,10 +120,11 @@ func registerMetrics(metricCount int) []*metricBatch {
 		promRegistry.MustRegister(histogram)
 		promRegistry.MustRegister(summary)
 
-		newMetrics := metricBatch{counter: counter, gauge: gauge, histogram: histogram, summary: summary}
-		metrics[idx] = &newMetrics
+		mc.counters = append(mc.counters, counter)
+		mc.gauges = append(mc.gauges, gauge)
+		mc.histograms = append(mc.histograms, histogram)
+		mc.summarys = append(mc.summarys, summary)
 	}
-	return metrics
 }
 
 func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
