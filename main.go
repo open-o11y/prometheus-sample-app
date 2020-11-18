@@ -5,6 +5,7 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
+	"sync"
 	"time"
 
 	"log"
@@ -14,9 +15,11 @@ import (
 )
 
 var (
-	testingID    string
-	metricCount  = 1
-	promRegistry = prometheus.NewRegistry() // local Registry so we don't get Go metrics, etc.
+	mtx             sync.Mutex
+	testingID       string
+	metricCount     = 1
+	metricCollector MetricCollector
+	promRegistry    = prometheus.NewRegistry() // local Registry so we don't get Go metrics, etc.
 )
 
 type metricBatch struct {
@@ -29,11 +32,12 @@ type metricBatch struct {
 func main() {
 	rand.Seed(time.Now().Unix())
 
-	healthCheck()
 	metrics := registerMetrics(metricCount)
 	go updateMetrics(metrics)
 
+	http.HandleFunc("/", healthCheckHandler)
 	http.Handle("/metrics", promhttp.HandlerFor(promRegistry, promhttp.HandlerOpts{}))
+	http.HandleFunc("/expected_metrics", retrieveExpectedMetrics)
 
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
@@ -53,6 +57,14 @@ func updateMetrics(metrics []*metricBatch) {
 
 		time.Sleep(time.Second)
 	}
+}
+
+func retrieveExpectedMetrics(w http.ResponseWriter, r *http.Request) {
+	mtx.Lock()
+	defer mtx.Unlock()
+
+	metricsResponse := metricCollector.convertMetricsToExportedMetrics()
+	retrieveExpectedMetricsHelper(w, r, metricsResponse)
 }
 
 func registerMetrics(metricCount int) []*metricBatch {
@@ -106,10 +118,6 @@ func registerMetrics(metricCount int) []*metricBatch {
 		metrics[idx] = &newMetrics
 	}
 	return metrics
-}
-
-func healthCheck() {
-	http.HandleFunc("/", healthCheckHandler)
 }
 
 func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
