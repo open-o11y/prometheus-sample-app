@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"sync"
 
 	"log"
 
@@ -11,18 +12,29 @@ import (
 )
 
 var (
-	testingID    string
-	metricCount  = 1
-	promRegistry = prometheus.NewRegistry() // local Registry so we don't get Go metrics, etc.
+	mtx             sync.Mutex
+	testingID       string
+	metricCount     = 1
+	metricCollector MetricCollector
+	promRegistry    = prometheus.NewRegistry() // local Registry so we don't get Go metrics, etc.
 )
 
 func main() {
-	healthCheck()
 	registerMetrics(metricCount)
 
+	http.HandleFunc("/", healthCheckHandler)
 	http.Handle("/metrics", promhttp.HandlerFor(promRegistry, promhttp.HandlerOpts{}))
+	http.HandleFunc("/expected_metrics", retrieveExpectedMetrics)
 
 	log.Fatal(http.ListenAndServe(":8080", nil))
+}
+
+func retrieveExpectedMetrics(w http.ResponseWriter, r *http.Request) {
+	mtx.Lock()
+	defer mtx.Unlock()
+
+	metricsResponse := metricCollector.convertMetricsToExportedMetrics()
+	retrieveExpectedMetricsHelper(w, r, metricsResponse)
 }
 
 func registerMetrics(metricCount int) {
@@ -119,10 +131,6 @@ func registerMetrics(metricCount int) {
 		promRegistry.MustRegister(histogram)
 		promRegistry.MustRegister(summary)
 	}
-}
-
-func healthCheck() {
-	http.HandleFunc("/", healthCheckHandler)
 }
 
 func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
