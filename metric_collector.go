@@ -37,7 +37,6 @@ func (mc metricCollector) handleCounters(metricsResponse *[]MetricResponse) {
 	for _, counter := range mc.counters {
 		metric := &dto.Metric{}
 		counter.Write(metric)
-		fmt.Println(metric.GetLabel())
 		labels := convertLabelPairsToLabels(metric.GetLabel())
 		labels["__name__"] = getName(counter)
 		values := convertMetricValues(mc.timestamp, metric.GetCounter().GetValue())
