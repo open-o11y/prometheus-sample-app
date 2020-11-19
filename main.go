@@ -5,6 +5,7 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -30,6 +31,7 @@ type metricBatch struct {
 }
 
 func main() {
+	testingID = os.Getenv("INSTANCE_ID")
 	rand.Seed(time.Now().Unix())
 
 	registerMetrics(metricCount)
