@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,7 +20,6 @@ import (
 var (
 	mtx          sync.Mutex
 	testingID    string
-	metricCount  = 1
 	mc           = newMetricCollector()
 	promRegistry = prometheus.NewRegistry() // local Registry so we don't get Go metrics, etc.
 )
@@ -34,6 +34,8 @@ type metricBatch struct {
 func main() {
 	testingID = os.Getenv("INSTANCE_ID")
 	port := ":" + strings.Split(os.Getenv("LISTEN_ADDRESS"), ":")[1]
+	metricCount := loadMetricCountFromEnv()
+
 	rand.Seed(time.Now().Unix())
 
 	registerMetrics(metricCount)
@@ -44,6 +46,18 @@ func main() {
 	http.HandleFunc("/expected_metrics", retrieveExpectedMetrics)
 
 	log.Fatal(http.ListenAndServe(port, nil))
+}
+
+func loadMetricCountFromEnv() int {
+	metricCount, ok := os.LookupEnv("METRICS_LOAD")
+	if !ok {
+		metricCount = "1"
+	}
+	numMetrics, err := strconv.Atoi(metricCount)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return numMetrics
 }
 
 func updateMetrics() {
