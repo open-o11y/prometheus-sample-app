@@ -38,7 +38,7 @@ func (mc metricCollector) handleCounters(metricsResponse *[]MetricResponse) {
 		metric := &dto.Metric{}
 		counter.Write(metric)
 		labels := convertLabelPairsToLabels(metric.GetLabel())
-		labels["__name__"] = getName(counter)
+		labels["__name__"] = getName(counter) + "_total"
 		values := convertMetricValues(mc.timestamp, metric.GetCounter().GetValue())
 
 		*metricsResponse = append(*metricsResponse, MetricResponse{

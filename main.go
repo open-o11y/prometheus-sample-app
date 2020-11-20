@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,6 +33,7 @@ type metricBatch struct {
 
 func main() {
 	testingID = os.Getenv("INSTANCE_ID")
+	port := ":" + strings.Split(os.Getenv("LISTEN_ADDRESS"), ":")[1]
 	rand.Seed(time.Now().Unix())
 
 	registerMetrics(metricCount)
@@ -41,11 +43,13 @@ func main() {
 	http.Handle("/metrics", promhttp.HandlerFor(promRegistry, promhttp.HandlerOpts{}))
 	http.HandleFunc("/expected_metrics", retrieveExpectedMetrics)
 
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServe(port, nil))
 }
 
 func updateMetrics() {
 	for {
+		time.Sleep(time.Second * 60)
+		mc.timestamp = float64(time.Now().UnixNano()) / 1000000000
 		for idx := 0; idx < mc.metricCount; idx++ {
 			mtx.Lock()
 			mc.counters[idx].Add(rand.Float64())
@@ -58,8 +62,6 @@ func updateMetrics() {
 			}
 			mtx.Unlock()
 		}
-
-		time.Sleep(time.Second)
 	}
 }
 
@@ -77,7 +79,7 @@ func registerMetrics(metricCount int) {
 		counter := prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Namespace: testingID,
-				Name:      fmt.Sprintf("test_counter_%v", idx),
+				Name:      fmt.Sprintf("test_counter%v", idx),
 				Help:      "This is my counter",
 				// labels can be added like this
 				// ConstLabels: prometheus.Labels{
@@ -87,20 +89,20 @@ func registerMetrics(metricCount int) {
 		gauge := prometheus.NewGauge(
 			prometheus.GaugeOpts{
 				Namespace: testingID,
-				Name:      fmt.Sprintf("test_gauge_%v", idx),
+				Name:      fmt.Sprintf("test_gauge%v", idx),
 				Help:      "This is my gauge",
 			})
 		histogram := prometheus.NewHistogram(
 			prometheus.HistogramOpts{
 				Namespace: testingID,
-				Name:      fmt.Sprintf("test_histogram_%v", idx),
+				Name:      fmt.Sprintf("test_histogram%v", idx),
 				Help:      "This is my histogram",
 				Buckets:   []float64{0.005, 0.1, 1},
 			})
 		summary := prometheus.NewSummary(
 			prometheus.SummaryOpts{
 				Namespace: testingID,
-				Name:      fmt.Sprintf("test_summary_%v", idx),
+				Name:      fmt.Sprintf("test_summary%v", idx),
 				Help:      "This is my summary",
 				Objectives: map[float64]float64{
 					0.1:  0.5,
@@ -108,14 +110,6 @@ func registerMetrics(metricCount int) {
 					0.99: 0.5,
 				},
 			})
-
-		// Set arbitrary values
-		counter.Add(5)
-		gauge.Add(15)
-		for i := 0.005; i < 1; i += 0.005 {
-			histogram.Observe(i)
-			summary.Observe(i)
-		}
 
 		promRegistry.MustRegister(counter)
 		promRegistry.MustRegister(gauge)
