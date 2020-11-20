@@ -8,7 +8,7 @@ A health check endpoint also exists at `/`
 
 The following is a list of environment variables for configuration:
 * `LISTEN_ADDRESS`: (required) this defines the address and port that the sample app is exposed to. This is primarily to conform with the test framework requirements, the address is ignored as localhost is used, however the port is used. 
-* `INSTANCE_ID`: (optional) a unique identifier for a batch of metrics from 1 instance of a sample app. Every metric name from a sample app instance will be prefixed by `INSTANCE_ID` if specified
+* `INSTANCE_ID`: (optional) a unique identifier for a batch of metrics from 1 instance of a sample app. Every metric name from a sample app instance will be prefixed by `testINSTANCE_ID_` if specified, else the prefix would be `test_`
 * `METRICS_LOAD`: (optional, default=1) the amount of each type of metric to generate. The same amount of metrics is always generated per metric type.
 
 Steps for running locally:

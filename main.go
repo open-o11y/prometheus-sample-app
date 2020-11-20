@@ -90,10 +90,11 @@ func retrieveExpectedMetrics(w http.ResponseWriter, r *http.Request) {
 func registerMetrics(metricCount int) {
 	mc.metricCount = metricCount
 	for idx := 0; idx < metricCount; idx++ {
+		namespace := "test" + testingID
 		counter := prometheus.NewCounter(
 			prometheus.CounterOpts{
-				Namespace: testingID,
-				Name:      fmt.Sprintf("test_counter%v", idx),
+				Namespace: namespace,
+				Name:      fmt.Sprintf("counter%v", idx),
 				Help:      "This is my counter",
 				// labels can be added like this
 				// ConstLabels: prometheus.Labels{
@@ -102,21 +103,21 @@ func registerMetrics(metricCount int) {
 			})
 		gauge := prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Namespace: testingID,
-				Name:      fmt.Sprintf("test_gauge%v", idx),
+				Namespace: namespace,
+				Name:      fmt.Sprintf("gauge%v", idx),
 				Help:      "This is my gauge",
 			})
 		histogram := prometheus.NewHistogram(
 			prometheus.HistogramOpts{
-				Namespace: testingID,
-				Name:      fmt.Sprintf("test_histogram%v", idx),
+				Namespace: namespace,
+				Name:      fmt.Sprintf("histogram%v", idx),
 				Help:      "This is my histogram",
 				Buckets:   []float64{0.005, 0.1, 1},
 			})
 		summary := prometheus.NewSummary(
 			prometheus.SummaryOpts{
-				Namespace: testingID,
-				Name:      fmt.Sprintf("test_summary%v", idx),
+				Namespace: namespace,
+				Name:      fmt.Sprintf("summary%v", idx),
 				Help:      "This is my summary",
 				Objectives: map[float64]float64{
 					0.1:  0.5,
