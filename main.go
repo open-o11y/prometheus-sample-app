@@ -48,7 +48,7 @@ func main() {
 
 func updateMetrics() {
 	for {
-		time.Sleep(time.Second * 60)
+		time.Sleep(time.Second * 30)
 		mc.timestamp = float64(time.Now().UnixNano()) / 1000000000
 		for idx := 0; idx < mc.metricCount; idx++ {
 			mtx.Lock()
