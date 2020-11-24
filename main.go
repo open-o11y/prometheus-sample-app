@@ -33,7 +33,7 @@ type metricBatch struct {
 
 func main() {
 	testingID = os.Getenv("INSTANCE_ID")
-	port := ":" + strings.Split(os.Getenv("LISTEN_ADDRESS"), ":")[1]
+	address := loadAddressFromEnv()
 	metricCount := loadMetricCountFromEnv()
 
 	rand.Seed(time.Now().Unix())
@@ -45,7 +45,18 @@ func main() {
 	http.Handle("/metrics", promhttp.HandlerFor(promRegistry, promhttp.HandlerOpts{}))
 	http.HandleFunc("/expected_metrics", retrieveExpectedMetrics)
 
-	log.Fatal(http.ListenAndServe(port, nil))
+	log.Fatal(http.ListenAndServe(address, nil))
+}
+
+func loadAddressFromEnv() string {
+	address, ok := os.LookupEnv("LISTEN_ADDRESS")
+	if !ok {
+		fmt.Println("Invalid address entered, serving on 0.0.0.0:8080")
+		return "0.0.0.0:8080"
+	}
+	address = strings.TrimSpace(address)
+	fmt.Println("Serving on address: " + address)
+	return address
 }
 
 func loadMetricCountFromEnv() int {
