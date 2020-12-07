@@ -5,7 +5,7 @@ This Prometheus sample app generates all 4 Prometheus metric types (counter, gau
 A health check endpoint also exists at `/`
 
 The following is a list of optional command line flags for configuration:
-* `listen_address`: (default = ``0.0.0.0:8080`)this defines the address and port that the sample app is exposed to. This is primarily to conform with the test framework requirements.
+* `listen_address`: (default = `0.0.0.0:8080`)this defines the address and port that the sample app is exposed to. This is primarily to conform with the test framework requirements.
 * `metric_count`: (default=1) the amount of each type of metric to generate. The same amount of metrics is always generated per metric type.
 
 Steps for running locally:
