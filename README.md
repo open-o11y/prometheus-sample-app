@@ -11,7 +11,7 @@ The following is a list of optional command line flags for configuration:
 Steps for running locally:
 ```bash
 $ go build .
-$ ./prometheus_sample_app -listen_address=0.0.0.0:4567 -metric_count=100
+$ ./prometheus-sample-app -listen_address=0.0.0.0:4567 -metric_count=100
 ```
 
 Steps for running in docker:
