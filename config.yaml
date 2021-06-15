@@ -1,0 +1,7 @@
+---
+Host: "0.0.0.0"
+Port: "8080"
+Type: "all"
+Count: 2
+Frequency: 15
+Random: false
