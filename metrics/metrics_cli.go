@@ -149,7 +149,6 @@ func (cli *CommandLine) Run() {
 	if err := conf.Parse(data); err != nil {
 		log.Fatal(err)
 	}
-	log.Println(conf)
 	generateCmd := flag.NewFlagSet("generate", flag.ExitOnError)
 
 	metricType := generateCmd.String("metric_type", conf.Type, "Type of metric (counter, gauge, histogram, summary)")
