@@ -40,14 +40,23 @@ $ curl localhost:9001/metrics
 
 Running the commands above will require a config file for setting defaults. The config file is provided in this application. To modify it just change the values.
 To override config file defaults you can specify your arguments via command line
+
 Usage of generate:
+
   -is_random
+
     	Metrics specification
+
   -metric_count int
+
     	Amount of metrics to create
+
   -metric_frequency int
+
     	Refresh interval in seconds 
+
   -metric_type string
+  
     	Type of metric (counter, gauge, histogram, summary) 
 
 Example: 
