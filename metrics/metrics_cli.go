@@ -24,6 +24,11 @@ type Config struct {
 	Random    bool   `yaml:"Random"`
 }
 
+var defaultType = "all"
+var defaultCount = 1
+var defaultFreq = 15
+var defaultRand = false
+
 type CommandLine struct{}
 
 func (c *Config) Parse(data []byte) error {
@@ -151,10 +156,23 @@ func (cli *CommandLine) Run() {
 	}
 	generateCmd := flag.NewFlagSet("generate", flag.ExitOnError)
 
-	metricType := generateCmd.String("metric_type", conf.Type, "Type of metric (counter, gauge, histogram, summary)")
-	metricCount := generateCmd.Int("metric_count", conf.Count, "Amount of metrics to create")
-	metricFreq := generateCmd.Int("metric_frequency", conf.Frequency, "Refresh interval in seconds")
-	rand := generateCmd.Bool("is_random", conf.Random, "Metrics specification")
+	if conf.Type != "" {
+		defaultType = conf.Type
+	}
+	if conf.Count <= 0 {
+		defaultCount = conf.Count
+	}
+	if conf.Frequency <= 0 {
+		defaultFreq = conf.Frequency
+	}
+	if !conf.Random {
+		defaultRand = conf.Random
+	}
+
+	metricType := generateCmd.String("metric_type", defaultType, "Type of metric (counter, gauge, histogram, summary)")
+	metricCount := generateCmd.Int("metric_count", defaultCount, "Amount of metrics to create")
+	metricFreq := generateCmd.Int("metric_frequency", defaultFreq, "Refresh interval in seconds")
+	rand := generateCmd.Bool("is_random", defaultRand, "Metrics specification")
 
 	if len(os.Args) > 2 {
 		err := generateCmd.Parse(os.Args[3:])
