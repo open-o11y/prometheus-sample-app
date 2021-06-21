@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"math/rand"
 	"time"
@@ -14,7 +15,7 @@ type metricCollector struct {
 	gauges     []prometheus.Gauge
 	histograms []prometheus.Histogram
 	summarys   []prometheus.Summary
-	interval   int
+	interval   time.Duration
 }
 
 var (
@@ -26,74 +27,68 @@ func newMetricCollector() metricCollector {
 }
 
 func (mc *metricCollector) updateCounter() {
-	for {
-		time.Sleep(time.Second * time.Duration(mc.interval))
-		for idx := 0; idx < len(mc.counters); idx++ {
-			mc.counters[idx].Add(rand.Float64())
-		}
+	for _, c := range mc.counters {
+		c.Add(rand.Float64())
 	}
+
 }
 
 func (mc *metricCollector) updateGauge() {
-	for {
-		time.Sleep(time.Second * time.Duration(mc.interval))
-		for idx := 0; idx < len(mc.gauges); idx++ {
-			mc.gauges[idx].Add(rand.Float64())
-		}
+	for _, c := range mc.gauges {
+		c.Add(rand.Float64())
 	}
 }
 
 func (mc *metricCollector) updateHistogram() {
-	for {
-		time.Sleep(time.Second * time.Duration(mc.interval))
+	for idx := 0; idx < len(mc.histograms); idx++ {
+		lowerBound := math.Mod(rand.Float64(), 1)
+		increment := math.Mod(rand.Float64(), 0.05)
+		for i := lowerBound; i < 1; i += increment {
+			mc.histograms[idx].Observe(i)
 
-		for idx := 0; idx < len(mc.histograms); idx++ {
-			lowerBound := math.Mod(rand.Float64(), 1)
-			increment := math.Mod(rand.Float64(), 0.05)
-			for i := lowerBound; i < 1; i += increment {
-				mc.histograms[idx].Observe(i)
-
-			}
 		}
 	}
+
 }
 func (mc *metricCollector) updateSummary() {
-	for {
-		time.Sleep(time.Second * time.Duration(mc.interval))
+	for idx := 0; idx < len(mc.summarys); idx++ {
+		lowerBound := math.Mod(rand.Float64(), 1)
+		increment := math.Mod(rand.Float64(), 0.05)
+		for i := lowerBound; i < 1; i += increment {
+			mc.summarys[idx].Observe(i)
 
-		for idx := 0; idx < len(mc.summarys); idx++ {
-			lowerBound := math.Mod(rand.Float64(), 1)
-			increment := math.Mod(rand.Float64(), 0.05)
-			for i := lowerBound; i < 1; i += increment {
-				mc.summarys[idx].Observe(i)
-
-			}
 		}
+
 	}
 }
 
-func (mc *metricCollector) updateMetrics(count int) {
-	for {
-		time.Sleep(time.Second * time.Duration(mc.interval))
-		for idx := 0; idx < count; idx++ {
-			if mc.counters != nil {
-				mc.counters[idx].Add(rand.Float64())
-			}
-			if mc.gauges != nil {
-				mc.gauges[idx].Add(rand.Float64())
-			}
-			lowerBound := math.Mod(rand.Float64(), 1)
-			increment := math.Mod(rand.Float64(), 0.05)
-			for i := lowerBound; i < 1; i += increment {
-				if mc.histograms != nil {
-					mc.histograms[idx].Observe(i)
-				}
-				if mc.summarys != nil {
-					mc.summarys[idx].Observe(i)
-				}
-			}
+func updateLoop(update func(), delay time.Duration) {
+	delay = delay * time.Second
+	go func() {
+		for {
+			time.Sleep(delay)
+			log.Println("Updating metrics ...")
+			update()
 		}
+	}()
+}
+
+func (mc *metricCollector) updateMetrics() {
+
+	if mc.counters != nil {
+		updateLoop(mc.updateCounter, mc.interval)
 	}
+	if mc.gauges != nil {
+		updateLoop(mc.updateGauge, mc.interval)
+	}
+
+	if mc.histograms != nil {
+		updateLoop(mc.updateHistogram, mc.interval)
+	}
+	if mc.summarys != nil {
+		updateLoop(mc.updateSummary, mc.interval)
+	}
+
 }
 
 func (mc *metricCollector) registerCounter(count int) {

@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"math/rand"
+	"net"
 	"net/http"
 	"os"
 	"time"
@@ -24,6 +25,12 @@ type Config struct {
 	Random    bool   `yaml:"Random"`
 }
 
+/*
+	defaultType valid values include - "all" "counter" "gauge" "histogram" "summary"
+	defaultCount valid values should be >= 0
+	defaultFreq valid values should be >= 0
+	defaultRand valid values should be boolean
+*/
 var defaultType = "all"
 var defaultCount = 1
 var defaultFreq = 15
@@ -41,14 +48,12 @@ func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 
 // initConnection handles the metric creation and also updates the metrics via go routines
 // The delegation logic is handled here
-func (cli *CommandLine) initConnection(str string, count int, freq int, isRandom bool, conf Config) {
+func (cli *CommandLine) initConnection(metricType string, count int, freq int, isRandom bool, conf Config, address string) {
 
 	rand.Seed(time.Now().Unix())
 	mc := newMetricCollector()
-	mc.interval = freq
-	addressPtr := flag.String("listen_address", conf.Host+":"+conf.Port, "server listening address")
-	address := *addressPtr
-	switch str {
+	mc.interval = time.Duration(freq)
+	switch metricType {
 	case "counter":
 		cli.createCounter(count, mc)
 	case "gauge":
@@ -60,7 +65,7 @@ func (cli *CommandLine) initConnection(str string, count int, freq int, isRandom
 	case "all":
 		cli.createAll(count, mc, isRandom)
 	default:
-		log.Println("Invalid type")
+		log.Fatal("Invalid type")
 	}
 	log.Println("Serving on address: " + address)
 	if isRandom {
@@ -78,23 +83,23 @@ func (cli *CommandLine) initConnection(str string, count int, freq int, isRandom
 
 func (cli *CommandLine) createCounter(count int, mc metricCollector) {
 	mc.registerCounter(count)
-	go mc.updateCounter()
+	updateLoop(mc.updateCounter, mc.interval)
 }
 
 func (cli *CommandLine) createGauge(count int, mc metricCollector) {
 	mc.registerGauge(count)
-	go mc.updateGauge()
+	updateLoop(mc.updateGauge, mc.interval)
 }
 
 func (cli *CommandLine) createHistogram(count int, mc metricCollector) {
 	mc.registerHistogram(count)
-	go mc.updateHistogram()
+	updateLoop(mc.updateHistogram, mc.interval)
 
 }
 
 func (cli *CommandLine) createSummary(count int, mc metricCollector) {
 	mc.registerSummary(count)
-	go mc.updateSummary()
+	updateLoop(mc.updateSummary, mc.interval)
 }
 
 // createAll generates all 4 metric types
@@ -108,12 +113,6 @@ func (cli *CommandLine) createAll(count int, mc metricCollector, isRandom bool) 
 		amount := rand.Intn(upper-lower) + lower
 		metrics := []string{"counter", "gauge", "histogram", "summary"}
 		rands := []int{rand.Intn(200), rand.Intn(200), rand.Intn(200), rand.Intn(200)}
-		max := rands[0]
-		for i := 0; i < len(rands); i++ {
-			if rands[i] > max {
-				max = rands[i]
-			}
-		}
 		for i := 0; i <= amount; i++ {
 			if idx >= len(metrics) {
 				idx = 0
@@ -137,7 +136,7 @@ func (cli *CommandLine) createAll(count int, mc metricCollector, isRandom bool) 
 		mc.registerGauge(count)
 		mc.registerHistogram(count)
 		mc.registerSummary(count)
-		go mc.updateMetrics(count)
+		go mc.updateMetrics()
 
 	}
 
@@ -156,31 +155,37 @@ func (cli *CommandLine) Run() {
 	}
 	generateCmd := flag.NewFlagSet("generate", flag.ExitOnError)
 
+	// Handling it without viper / cobra for now - still follows flags >  configuration file > defaults
+	usedType := defaultType
+	usedCount := defaultCount
+	usedFreq := defaultFreq
+	usedRand := defaultRand
 	if conf.Type != "" {
-		defaultType = conf.Type
+		usedType = conf.Type
 	}
-	if conf.Count <= 0 {
-		defaultCount = conf.Count
+	if conf.Count >= 0 {
+		usedCount = conf.Count
 	}
-	if conf.Frequency <= 0 {
-		defaultFreq = conf.Frequency
+	if conf.Frequency >= 0 {
+		usedFreq = conf.Frequency
 	}
-	if !conf.Random {
-		defaultRand = conf.Random
+	if conf.Random {
+		usedRand = conf.Random
 	}
 
-	metricType := generateCmd.String("metric_type", defaultType, "Type of metric (counter, gauge, histogram, summary)")
-	metricCount := generateCmd.Int("metric_count", defaultCount, "Amount of metrics to create")
-	metricFreq := generateCmd.Int("metric_frequency", defaultFreq, "Refresh interval in seconds")
-	rand := generateCmd.Bool("is_random", defaultRand, "Metrics specification")
+	metricType := generateCmd.String("metric_type", usedType, "Type of metric (counter, gauge, histogram, summary)")
+	metricCount := generateCmd.Int("metric_count", usedCount, "Amount of metrics to create")
+	metricFreq := generateCmd.Int("metric_frequency", usedFreq, "Refresh interval in seconds")
+	addressPtr := generateCmd.String("listen_address", net.JoinHostPort(conf.Host, conf.Port), "server listening address")
+	rand := generateCmd.Bool("is_random", usedRand, "Metrics specification")
 
-	if len(os.Args) > 2 {
-		err := generateCmd.Parse(os.Args[3:])
+	if len(os.Args) > 1 {
+		err := generateCmd.Parse(os.Args[2:])
 		if err != nil {
 			log.Panic(err)
 		}
 	}
 
-	cli.initConnection(*metricType, *metricCount, *metricFreq, *rand, conf)
+	cli.initConnection(*metricType, *metricCount, *metricFreq, *rand, conf, *addressPtr)
 
 }
