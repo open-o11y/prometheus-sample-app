@@ -63,7 +63,6 @@ func (mc *metricCollector) updateSummary() {
 }
 
 func updateLoop(update func(), delay time.Duration) {
-	delay = delay * time.Second
 	go func() {
 		for {
 			time.Sleep(delay)

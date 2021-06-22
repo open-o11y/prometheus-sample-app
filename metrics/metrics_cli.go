@@ -1,14 +1,16 @@
 package metrics
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"math/rand"
-	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -16,9 +18,7 @@ import (
 )
 
 type Config struct {
-	Host string `yaml:"Host"`
-	Port string `yaml:"Port"`
-
+	Address   string `yaml:"Address"`
 	Type      string `yaml:"Type"`
 	Count     int    `yaml:"Count"`
 	Frequency int    `yaml:"Frequency"`
@@ -35,6 +35,7 @@ var defaultType = "all"
 var defaultCount = 1
 var defaultFreq = 15
 var defaultRand = false
+var defaultAddress = "0.0.0.0:8080"
 
 type CommandLine struct{}
 
@@ -48,63 +49,88 @@ func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 
 // initConnection handles the metric creation and also updates the metrics via go routines
 // The delegation logic is handled here
-func (cli *CommandLine) initConnection(metricType string, count int, freq int, isRandom bool, conf Config, address string) {
+func (conf *Config) initConnection() {
 
 	rand.Seed(time.Now().Unix())
 	mc := newMetricCollector()
-	mc.interval = time.Duration(freq)
-	switch metricType {
+	mc.interval = time.Duration(conf.Frequency) * time.Second
+	switch conf.Type {
 	case "counter":
-		cli.createCounter(count, mc)
+		createCounter(conf.Count, mc)
 	case "gauge":
-		cli.createGauge(count, mc)
+		createGauge(conf.Count, mc)
 	case "histogram":
-		cli.createHistogram(count, mc)
+		createHistogram(conf.Count, mc)
 	case "summary":
-		cli.createSummary(count, mc)
+		createSummary(conf.Count, mc)
 	case "all":
-		cli.createAll(count, mc, isRandom)
+		createAll(conf.Count, mc, conf.Random)
 	default:
 		log.Fatal("Invalid type")
 	}
-	log.Println("Serving on address: " + address)
-	if isRandom {
+	log.Print("Server Started")
+	log.Println("Serving on address: " + conf.Address)
+	if conf.Random {
 		log.Println("Producing randomized metrics per type")
-
 	} else {
-		log.Println("Producing " + fmt.Sprintf("%d", count) + " metric(s) per type")
+		log.Println("Producing " + fmt.Sprintf("%d", conf.Count) + " metric(s) per type")
 	}
-	log.Println("Updating at a frequency of " + fmt.Sprintf("%d", mc.interval) + " seconds")
+
+	// Server handling
+	srv := &http.Server{
+		Addr:    conf.Address,
+		Handler: nil,
+	}
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("listen: %s\n", err)
+		}
+	}()
+	log.Println("Updating at a frequency of "+fmt.Sprintf("%d", (mc.interval/time.Second)), "seconds")
 	http.HandleFunc("/", healthCheckHandler)
 	http.Handle("/metrics", promhttp.HandlerFor(promRegistry, promhttp.HandlerOpts{}))
 
-	log.Fatal(http.ListenAndServe(address, nil))
+	<-done
+	log.Print("Server Stopped")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer func() {
+		cancel()
+	}()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalf("Server Shutdown Failed:%+v", err)
+	}
+	log.Print("Server Exited")
+
 }
 
-func (cli *CommandLine) createCounter(count int, mc metricCollector) {
+func createCounter(count int, mc metricCollector) {
 	mc.registerCounter(count)
 	updateLoop(mc.updateCounter, mc.interval)
 }
 
-func (cli *CommandLine) createGauge(count int, mc metricCollector) {
+func createGauge(count int, mc metricCollector) {
 	mc.registerGauge(count)
 	updateLoop(mc.updateGauge, mc.interval)
 }
 
-func (cli *CommandLine) createHistogram(count int, mc metricCollector) {
+func createHistogram(count int, mc metricCollector) {
 	mc.registerHistogram(count)
 	updateLoop(mc.updateHistogram, mc.interval)
 
 }
 
-func (cli *CommandLine) createSummary(count int, mc metricCollector) {
+func createSummary(count int, mc metricCollector) {
 	mc.registerSummary(count)
 	updateLoop(mc.updateSummary, mc.interval)
 }
 
 // createAll generates all 4 metric types
 // If isRandom is sent as true, createAll will generate randomized metrics. Otherwise createALl will steadily create the 4 types of metrics with a fixed count (provided by the user
-func (cli *CommandLine) createAll(count int, mc metricCollector, isRandom bool) {
+func createAll(count int, mc metricCollector, isRandom bool) {
 
 	if isRandom {
 		idx := rand.Intn(4)
@@ -121,13 +147,13 @@ func (cli *CommandLine) createAll(count int, mc metricCollector, isRandom bool) 
 			idx++
 			switch str {
 			case "counter":
-				cli.createCounter(rands[0], mc)
+				createCounter(rands[0], mc)
 			case "gauge":
-				cli.createGauge(rands[1], mc)
+				createGauge(rands[1], mc)
 			case "histogram":
-				cli.createHistogram(rands[2], mc)
+				createHistogram(rands[2], mc)
 			case "summary":
-				cli.createSummary(rands[3], mc)
+				createSummary(rands[3], mc)
 			}
 		}
 
@@ -156,10 +182,14 @@ func (cli *CommandLine) Run() {
 	generateCmd := flag.NewFlagSet("generate", flag.ExitOnError)
 
 	// Handling it without viper / cobra for now - still follows flags >  configuration file > defaults
+	// defaults are set first
+	// config file is read - if there are valid values, config file overrides defaults
+	// flags will use config values as default values and overide them with CLI input
 	usedType := defaultType
 	usedCount := defaultCount
 	usedFreq := defaultFreq
 	usedRand := defaultRand
+	usedAddress := defaultAddress
 	if conf.Type != "" {
 		usedType = conf.Type
 	}
@@ -172,20 +202,29 @@ func (cli *CommandLine) Run() {
 	if conf.Random {
 		usedRand = conf.Random
 	}
+	if conf.Address != "" {
+		usedAddress = conf.Address
+	}
 
 	metricType := generateCmd.String("metric_type", usedType, "Type of metric (counter, gauge, histogram, summary)")
 	metricCount := generateCmd.Int("metric_count", usedCount, "Amount of metrics to create")
 	metricFreq := generateCmd.Int("metric_frequency", usedFreq, "Refresh interval in seconds")
-	addressPtr := generateCmd.String("listen_address", net.JoinHostPort(conf.Host, conf.Port), "server listening address")
+	addressPtr := generateCmd.String("listen_address", usedAddress, "server listening address")
 	rand := generateCmd.Bool("is_random", usedRand, "Metrics specification")
 
 	if len(os.Args) > 1 {
-		err := generateCmd.Parse(os.Args[2:])
+		err := generateCmd.Parse(os.Args[1:])
 		if err != nil {
 			log.Panic(err)
 		}
 	}
 
-	cli.initConnection(*metricType, *metricCount, *metricFreq, *rand, conf, *addressPtr)
+	conf.Type = *metricType
+	conf.Count = *metricCount
+	conf.Frequency = *metricFreq
+	conf.Random = *rand
+	conf.Address = *addressPtr
+
+	conf.initConnection()
 
 }
