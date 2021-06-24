@@ -193,10 +193,10 @@ func (cli *CommandLine) Run() {
 	if conf.Type != "" {
 		usedType = conf.Type
 	}
-	if conf.Count >= 0 {
+	if conf.Count > 0 {
 		usedCount = conf.Count
 	}
-	if conf.Frequency >= 0 {
+	if conf.Frequency > 0 {
 		usedFreq = conf.Frequency
 	}
 	if conf.Random {
