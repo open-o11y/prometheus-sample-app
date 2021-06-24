@@ -35,5 +35,38 @@ $ curl localhost:9001/metrics
 ```bash
 $ docker build . -t prometheus-sample-app
 $ docker run -it -p 9001:8080 prometheus-sample-app /bin/main -listen_address=0.0.0.0:8080 -metric_count=100
-$ curl localhost:9001/metricss
+$ curl localhost:9001/metrics
+```
+
+Running the commands above will require a config file for setting defaults. The config file is provided in this application. To modify it just change the values.
+To override config file defaults you can specify your arguments via command line
+
+Usage of generate:
+
+  -is_random
+
+    	Metrics specification
+
+  -metric_count int
+
+    	Amount of metrics to create
+
+  -metric_frequency int
+
+    	Refresh interval in seconds 
+
+  -metric_type string
+  
+    	Type of metric (counter, gauge, histogram, summary) 
+
+Example: 
+```bash
+$ docker build . -t prometheus-sample-app
+$ docker run -it -p 8080:8080 prometheus-sample-app /bin/main -listen_address=0.0.0.0:8080 generate -metric_type=summary -metric_count=30 -metric_frequency=10
+$ curl localhost:8080/metrics
+```
+```bash
+$ docker build . -t prometheus-sample-app
+$ docker run -it -p 8080:8080 prometheus-sample-app /bin/main -listen_address=0.0.0.0:8080 generate -metric_type=all -is_random=true
+$ curl localhost:8080/metrics
 ```

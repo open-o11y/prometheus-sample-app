@@ -1,1 +1,3 @@
-prom-sample-app
+prometheus-sample-app
+*.DS_Store
+*.exe
