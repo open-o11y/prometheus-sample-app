@@ -35,7 +35,7 @@ func (mc *metricCollector) updateCounter() {
 
 func (mc *metricCollector) updateGauge() {
 	for _, c := range mc.gauges {
-		c.Add(rand.Float64())
+		c.Set(rand.Float64())
 	}
 }
 
