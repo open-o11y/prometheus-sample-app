@@ -17,30 +17,42 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// mean and standard deviation for histogram and summary normal distribution
+var (
+	normDomain = flag.Float64("normal.domain", 0.5, "The domain for the normal distribution.")
+	normMean   = flag.Float64("normal.mean", 0.18, "The mean for the normal distribution.")
+)
+
 type Config struct {
-	Address   string `yaml:"Address"`
-	Type      string `yaml:"Type"`
-	Count     int    `yaml:"Count"`
-	Frequency int    `yaml:"Frequency"`
-	Random    bool   `yaml:"Random"`
+	Address        string `yaml:"Address"`
+	Type           string `yaml:"Type"`
+	MetricsCount   int    `yaml:"MetricsCount"`
+	LabelsCount    int    `yaml:"LabelsCount"`
+	DataPointCount int    `yaml:"DataPointCount"`
+	Frequency      int    `yaml:"Frequency"`
+	Random         bool   `yaml:"Random"`
 }
 
 /*
 	defaultType valid values include - "all" "counter" "gauge" "histogram" "summary"
-	defaultCount valid values should be >= 0
+	defaultMetricsCount valid values should be >= 0
 	defaultFreq valid values should be >= 0
 	defaultRand valid values should be boolean
+	defaultLabelsCount valid values should be >= 0
+	defaultDataPointCount valid values should be > 0
 */
 var defaultType = "all"
-var defaultCount = 1
+var defaultMetricsCount = 1
+var defaultLabelsCount = 1
+var defaultDataPointCount = 1
 var defaultFreq = 15
 var defaultRand = false
 var defaultAddress = "0.0.0.0:8080"
 
 type CommandLine struct{}
 
-func (c *Config) Parse(data []byte) error {
-	return yaml.Unmarshal(data, c)
+func (conf *Config) Parse(data []byte) error {
+	return yaml.Unmarshal(data, conf)
 }
 
 func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
@@ -54,17 +66,19 @@ func (conf *Config) initConnection() {
 	rand.Seed(time.Now().Unix())
 	mc := newMetricCollector()
 	mc.interval = time.Duration(conf.Frequency) * time.Second
+	mc.labelValues, mc.labelKeys = generateLabels(conf.LabelsCount)
+	mc.datapointCount = conf.DataPointCount
 	switch conf.Type {
 	case "counter":
-		createCounter(conf.Count, mc)
+		createCounter(conf.MetricsCount, mc)
 	case "gauge":
-		createGauge(conf.Count, mc)
+		createGauge(conf.MetricsCount, mc)
 	case "histogram":
-		createHistogram(conf.Count, mc)
+		createHistogram(conf.MetricsCount, mc)
 	case "summary":
-		createSummary(conf.Count, mc)
+		createSummary(conf.MetricsCount, mc)
 	case "all":
-		createAll(conf.Count, mc, conf.Random)
+		createAll(conf.MetricsCount, mc, conf.Random)
 	default:
 		log.Fatal("Invalid type")
 	}
@@ -73,7 +87,7 @@ func (conf *Config) initConnection() {
 	if conf.Random {
 		log.Println("Producing randomized metrics per type")
 	} else {
-		log.Println("Producing " + fmt.Sprintf("%d", conf.Count) + " metric(s) per type")
+		log.Println("Producing " + fmt.Sprintf("%d", conf.MetricsCount) + " metric(s) per type")
 	}
 
 	// Server handling
@@ -89,7 +103,7 @@ func (conf *Config) initConnection() {
 			log.Fatalf("listen: %s\n", err)
 		}
 	}()
-	log.Println("Updating at a frequency of "+fmt.Sprintf("%d", (mc.interval/time.Second)), "seconds")
+	log.Println("Updating at a frequency of "+fmt.Sprintf("%d", mc.interval/time.Second), "seconds")
 	http.HandleFunc("/", healthCheckHandler)
 	http.Handle("/metrics", promhttp.HandlerFor(promRegistry, promhttp.HandlerOpts{}))
 
@@ -129,7 +143,7 @@ func createSummary(count int, mc metricCollector) {
 }
 
 // createAll generates all 4 metric types
-// If isRandom is sent as true, createAll will generate randomized metrics. Otherwise createALl will steadily create the 4 types of metrics with a fixed count (provided by the user
+// If isRandom is sent as true, createAll will generate randomized metrics. Other-wise createALl will steadily create the 4 types of metrics with a fixed count (provided by the user
 func createAll(count int, mc metricCollector, isRandom bool) {
 
 	if isRandom {
@@ -169,7 +183,7 @@ func createAll(count int, mc metricCollector, isRandom bool) {
 }
 
 // Run reads the config file and uses the data as default arguments.
-// These arguments can be overriden by CLI input (see README)
+// These arguments can be overridden by CLI input (see README)
 func (cli *CommandLine) Run() {
 	data, err := ioutil.ReadFile("config.yaml")
 	if err != nil {
@@ -184,17 +198,25 @@ func (cli *CommandLine) Run() {
 	// Handling it without viper / cobra for now - still follows flags >  configuration file > defaults
 	// defaults are set first
 	// config file is read - if there are valid values, config file overrides defaults
-	// flags will use config values as default values and overide them with CLI input
+	// flags will use config values as default values and override them with CLI input
 	usedType := defaultType
-	usedCount := defaultCount
+	usedMetricsCount := defaultMetricsCount
+	usedLabelsCount := defaultLabelsCount
+	usedDataPointCount := defaultDataPointCount
 	usedFreq := defaultFreq
 	usedRand := defaultRand
 	usedAddress := defaultAddress
 	if conf.Type != "" {
 		usedType = conf.Type
 	}
-	if conf.Count > 0 {
-		usedCount = conf.Count
+	if conf.MetricsCount > 0 {
+		usedMetricsCount = conf.MetricsCount
+	}
+	if conf.LabelsCount > 0 {
+		usedLabelsCount = conf.LabelsCount
+	}
+	if conf.DataPointCount > 0 {
+		usedDataPointCount = conf.DataPointCount
 	}
 	if conf.Frequency > 0 {
 		usedFreq = conf.Frequency
@@ -207,7 +229,9 @@ func (cli *CommandLine) Run() {
 	}
 
 	metricType := generateCmd.String("metric_type", usedType, "Type of metric (counter, gauge, histogram, summary)")
-	metricCount := generateCmd.Int("metric_count", usedCount, "Amount of metrics to create")
+	metricCount := generateCmd.Int("metric_count", usedMetricsCount, "Amount of metrics to create")
+	labelCount := generateCmd.Int("label_count", usedLabelsCount, "Amount of labels per metric to create")
+	dataPointCount := generateCmd.Int("datapoint_count", usedDataPointCount, "Number of data-points per metric to create")
 	metricFreq := generateCmd.Int("metric_frequency", usedFreq, "Refresh interval in seconds")
 	addressPtr := generateCmd.String("listen_address", usedAddress, "server listening address")
 	rand := generateCmd.Bool("is_random", usedRand, "Metrics specification")
@@ -220,7 +244,9 @@ func (cli *CommandLine) Run() {
 	}
 
 	conf.Type = *metricType
-	conf.Count = *metricCount
+	conf.MetricsCount = *metricCount
+	conf.LabelsCount = *labelCount
+	conf.DataPointCount = *dataPointCount
 	conf.Frequency = *metricFreq
 	conf.Random = *rand
 	conf.Address = *addressPtr
